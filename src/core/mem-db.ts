@@ -73,6 +73,16 @@ export function insertObservation(db: SqliteDatabase, obs: Observation, project:
 }
 
 /** Hardcoded whitelist of FTS5 table names — prevents SQL injection via table name interpolation */
+export function ensureSession(db: SqliteDatabase, obs: Observation, project: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO sdk_sessions (content_session_id, memory_session_id, project, started_at, started_at_epoch, status)
+     VALUES (?, ?, ?, ?, ?, 'completed')`
+  ).run(
+    `imported-${obs.memory_session_id}`, obs.memory_session_id, project,
+    obs.created_at ?? new Date(obs.created_at_epoch).toISOString(), obs.created_at_epoch
+  );
+}
+
 const ALLOWED_FTS_TABLES: ReadonlySet<string> = new Set([
   "observations_fts",
   "session_summaries_fts",
