@@ -63,11 +63,12 @@ export function checkDuplicate(
 
 export function insertObservation(db: SqliteDatabase, obs: Observation, project: string): void {
   db.prepare(
-    `INSERT INTO observations (memory_session_id, type, title, narrative, text, facts, concepts, files_read, files_modified, created_at_epoch, project)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO observations (memory_session_id, type, title, narrative, text, facts, concepts, files_read, files_modified, created_at_epoch, created_at, project)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     obs.memory_session_id, obs.type, obs.title, obs.narrative, obs.text,
-    obs.facts, obs.concepts, obs.files_read, obs.files_modified, obs.created_at_epoch, project
+    obs.facts, obs.concepts, obs.files_read, obs.files_modified, obs.created_at_epoch,
+    obs.created_at ?? new Date(obs.created_at_epoch).toISOString(), project
   );
 }
 
