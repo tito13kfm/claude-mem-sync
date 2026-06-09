@@ -7,6 +7,7 @@ import {
   checkDuplicate,
   insertObservation,
   ensureSession,
+  epochToIsoString,
   rebuildFts,
   runIntegrityCheck,
   getObservationCount,
@@ -270,6 +271,16 @@ describe("Import schema compatibility (current claude-mem)", () => {
     expect(row.created_at).toBe(explicit);
 
     db.close();
+  });
+
+  test("epochToIsoString normalizes both seconds and millisecond epochs", () => {
+    // Milliseconds (current claude-mem): used as-is.
+    expect(epochToIsoString(1781024952302)).toBe("2026-06-09T17:09:12.302Z");
+    // Seconds (legacy / fixtures): scaled up — same calendar instant, not 1970.
+    expect(epochToIsoString(1710000000)).toBe(new Date(1710000000 * 1000).toISOString());
+    expect(epochToIsoString(1710000000).startsWith("2024-")).toBe(true);
+    // A seconds value and its millisecond equivalent resolve to the same instant.
+    expect(epochToIsoString(1710000000)).toBe(epochToIsoString(1710000000000));
   });
 
   test("isFileImported reports false for an unknown hash and true after logging it", () => {

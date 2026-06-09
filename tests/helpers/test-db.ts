@@ -1,4 +1,5 @@
 import { createDatabase, type SqliteDatabase } from "../../src/core/compat";
+import { epochToIsoString } from "../../src/core/mem-db";
 import type { Observation } from "../../src/types/observation";
 
 /**
@@ -84,7 +85,7 @@ export function insertTestObservation(db: SqliteDatabase, obs: Partial<Observati
     obs.files_read ?? null,
     obs.files_modified ?? null,
     epoch,
-    obs.created_at ?? new Date(epoch).toISOString(),
+    obs.created_at ?? epochToIsoString(epoch),
     obs.project ?? "test-project"
   );
   return Number(result.lastInsertRowid);

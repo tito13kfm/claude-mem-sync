@@ -61,18 +61,32 @@ export function checkDuplicate(
   return row != null;
 }
 
+/**
+ * Convert a claude-mem `created_at_epoch` to an ISO-8601 string.
+ *
+ * The field's unit is not consistent across the ecosystem: the current
+ * claude-mem schema stores MILLISECONDS, while older rows and several places in
+ * this repo assume SECONDS (display multiplies by 1000, scoring compares against
+ * `Date.now()/1000`). Normalize by magnitude — anything below 1e12 (every
+ * plausible seconds value; 1e12 ms is the year 2001) is treated as seconds and
+ * scaled up. This yields a correct timestamp for both conventions instead of
+ * producing a 1970 (seconds read as ms) or year-58408 (ms read as seconds) date.
+ */
+export function epochToIsoString(epoch: number): string {
+  const ms = epoch < 1e12 ? epoch * 1000 : epoch;
+  return new Date(ms).toISOString();
+}
+
 export function insertObservation(db: SqliteDatabase, obs: Observation, project: string): void {
   // `created_at` is NOT NULL in the current claude-mem schema. When the merged
-  // JSON lacks it (export only carries `created_at_epoch`), derive it from the
-  // epoch. claude-mem stores `created_at_epoch` in MILLISECONDS, so it maps
-  // directly via `new Date(ms)` — do NOT multiply by 1000.
+  // JSON lacks it (export only carries `created_at_epoch`), derive it from the epoch.
   db.prepare(
     `INSERT INTO observations (memory_session_id, type, title, narrative, text, facts, concepts, files_read, files_modified, created_at_epoch, created_at, project)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     obs.memory_session_id, obs.type, obs.title, obs.narrative, obs.text,
     obs.facts, obs.concepts, obs.files_read, obs.files_modified, obs.created_at_epoch,
-    obs.created_at ?? new Date(obs.created_at_epoch).toISOString(), project
+    obs.created_at ?? epochToIsoString(obs.created_at_epoch), project
   );
 }
 
@@ -91,7 +105,7 @@ export function ensureSession(db: SqliteDatabase, obs: Observation, project: str
      VALUES (?, ?, ?, ?, ?, 'completed')`
   ).run(
     `imported-${obs.memory_session_id}`, obs.memory_session_id, project,
-    obs.created_at ?? new Date(obs.created_at_epoch).toISOString(), obs.created_at_epoch
+    obs.created_at ?? epochToIsoString(obs.created_at_epoch), obs.created_at_epoch
   );
 }
 
