@@ -273,6 +273,80 @@ describe("Import schema compatibility (current claude-mem)", () => {
     db.close();
   });
 
+  test("insertObservation stores a correct (non-1970) created_at for a seconds-based epoch", () => {
+    const db = createTestMemDb({ enforceForeignKeys: true });
+    const secondsEpoch = 1710000000; // 2024-03-09, in SECONDS
+    const obs = makeRemoteObs({ created_at_epoch: secondsEpoch });
+
+    ensureSession(db, obs, "test-project");
+    insertObservation(db, obs, "test-project");
+
+    const row = db
+      .prepare("SELECT created_at FROM observations WHERE memory_session_id = ?")
+      .get("remote-session-1") as { created_at: string };
+    // Regression guard: a seconds epoch must NOT be read as ms (which yields 1970).
+    expect(row.created_at).toBe(new Date(secondsEpoch * 1000).toISOString());
+    expect(row.created_at.startsWith("2024-")).toBe(true);
+    expect(row.created_at.startsWith("1970-")).toBe(false);
+
+    db.close();
+  });
+
+  test("full import pipeline: FK stub + NOT NULL + dedup + FTS rebuild stays integrity-clean", () => {
+    const db = createTestMemDb({ enforceForeignKeys: true });
+    const project = "test-project";
+
+    // Pre-existing observation (with its parent session) — will be a duplicate.
+    const existing = makeRemoteObs({
+      memory_session_id: "session-existing",
+      title: "Existing Decision",
+      created_at_epoch: 1781000000000, // ms
+    });
+    ensureSession(db, existing, project);
+    insertObservation(db, existing, project);
+    expect(getObservationCount(db)).toBe(1);
+
+    // Incoming merged batch: 1 duplicate + 2 new (one ms, one seconds), all from
+    // sessions absent on this machine (exercises the FK stub for each).
+    const batch: Observation[] = [
+      makeRemoteObs({ memory_session_id: "session-existing", title: "Existing Decision", created_at_epoch: 1781000000000 }), // dup
+      makeRemoteObs({ memory_session_id: "session-new-ms", title: "New (ms)", created_at_epoch: 1781024952302 }),
+      makeRemoteObs({ memory_session_id: "session-new-secs", title: "New (seconds)", created_at_epoch: 1710000000 }),
+    ];
+
+    let newCount = 0;
+    let skippedCount = 0;
+    const tx = db.transaction(() => {
+      for (const obs of batch) {
+        if (checkDuplicate(db, obs.memory_session_id, obs.title, obs.created_at_epoch)) {
+          skippedCount++;
+        } else {
+          ensureSession(db, obs, project); // stub parent before insert (FK)
+          insertObservation(db, obs, project);
+          newCount++;
+        }
+      }
+    });
+    tx();
+
+    expect(newCount).toBe(2);
+    expect(skippedCount).toBe(1);
+    expect(getObservationCount(db)).toBe(3); // 1 existing + 2 new
+
+    // Both derived timestamps land in the right decade, never 1970.
+    const rows = db
+      .prepare("SELECT memory_session_id, created_at FROM observations WHERE memory_session_id LIKE 'session-new-%'")
+      .all() as Array<{ memory_session_id: string; created_at: string }>;
+    const bySession = Object.fromEntries(rows.map((r) => [r.memory_session_id, r.created_at]));
+    expect(bySession["session-new-ms"].startsWith("2026-")).toBe(true);
+    expect(bySession["session-new-secs"].startsWith("2024-")).toBe(true);
+
+    rebuildFts(db);
+    expect(runIntegrityCheck(db)).toBe("ok");
+
+    db.close();
+  });
+
   test("epochToIsoString normalizes both seconds and millisecond epochs", () => {
     // Milliseconds (current claude-mem): used as-is.
     expect(epochToIsoString(1781024952302)).toBe("2026-06-09T17:09:12.302Z");
