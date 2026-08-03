@@ -19,7 +19,11 @@ function resolveVersion(): string {
 
 export const PACKAGE_VERSION: string = resolveVersion();
 
-export const CONFIG_DIR = join(homedir(), ".claude-mem-sync");
+// MEM_SYNC_CONFIG_DIR lets one install serve several claude-mem stores. A machine
+// that routes sessions to more than one store (e.g. a work/personal split driven by
+// CLAUDE_MEM_DATA_DIR) needs one config, access.db and log dir per store, because
+// claudeMemDbPath is global to a config.
+export const CONFIG_DIR = process.env.MEM_SYNC_CONFIG_DIR || join(homedir(), ".claude-mem-sync");
 export const CONFIG_PATH = join(CONFIG_DIR, "config.json");
 export const ACCESS_DB_PATH = join(CONFIG_DIR, "access.db");
 export const LOGS_DIR = join(CONFIG_DIR, "logs");
